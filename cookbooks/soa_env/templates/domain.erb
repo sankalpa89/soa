@@ -1,0 +1,269 @@
+ORACLE_HOME = '<%= @oracle_home %>'
+DOMAIN      = '<%= @domain_name %>'
+DOMAIN_PATH = '<%= @domain_path %>'
+APP_PATH    = '<%= @app_path %>'
+#ADMIN_SERVER_GROUPS = ["WSM-CACHE-SVR" , "WSMPM-MAN-SVR" , "JRF-MAN-SVR"]
+ADMIN_SERVER_GROUPS = []
+
+
+
+DOMAIN_MODE = '<%= @domain_mode %>'
+#DOMAIN_EXT = ['<%= @domain_ext %>']
+DOMAIN_EXT = [<% @domain_ext.each do |ext| %>'<%= ext %>',<% end %>]
+#DOMAIN_EXT = []
+ADMIN_SERVER_NAME   = '<%= @admin_server_name %>'
+ADMIN_USER_NAME     = '<%= @admin_user_name %>'
+ADMIN_PASSWORD = '<%= @admin_password %>'
+ADMIN_PORT     = <%= @admin_server_port %>
+ADMIN_LISTEN_ADDRESS = '<%= @admin_listen_address %>'
+ADMIN_SSL     = <%= @admin_ssl_enable %>
+ADMIN_SSL_PORT     = <%= @admin_ssl_port %>
+ADMIN_STARTUP_ARGS = '<%= @admin_startup_args %>'
+
+
+JAVA_HOME      = '<%= @java_home %>'
+
+
+
+DB_URL          = '<%= @db_url %>'
+SCHEMA_USER_PREFIX  = '<%= @schema_user_prefix %>'
+SCHEMA_USER_PASSWORD = '<%= @schema_user_password %>'
+
+
+SERVERS = [<% @servers.each do |server| %>'<%= server['name'] %>',<% end %>]
+<% @servers.each do |server| %>
+<%= server['name'] %>_lnaddress='<%= server['listen_address'] %>'
+<%= server['name'] %>_port=<%= server['listen_port'] %>
+<%= server['name'] %>_ssl=<%= server['ssl_enable'] %>
+<%= server['name'] %>_sslport=<%= server['ssl_port'] %>
+<%= server['name'] %>_startupargs='<%= server['startup_arguments'] %>'
+<%= server['name'] %>_groups=<%= server['server_groups'] %>
+<% end %>
+
+CLUSTERS = [<% @clusters.each do |cluster| %>'<%= cluster['name'] %>',<% end %>]
+<% @clusters.each do |cluster| %>
+<%= cluster['name'] %>_members=<%= cluster['members'] %>
+<%= cluster['name'] %>_address='<%= cluster['address'] %>'
+<% end %>
+
+MACHINES = [<% @machines.each do |machine| %>'<%= machine['name'] %>',<% end %>]
+<% @machines.each do |machine| %>
+<%= machine['name'] %>_members=<%= machine['members'] %>
+<%= machine['name'] %>_nm_listen_address='<%= machine['nm_listen_address'] %>'
+<%= machine['name'] %>_nm_listen_port=<%= machine['nm_listen_port'] %>
+<% end %>
+
+
+def createBootPropertiesFile(directoryPath,fileName, username, password):
+  serverDir = File(directoryPath)
+  bool = serverDir.mkdirs()
+  fileNew=open(directoryPath + '/'+fileName, 'w')
+  fileNew.write('username=%s\n' % username)
+  fileNew.write('password=%s\n' % password)
+  fileNew.flush()
+  fileNew.close()
+
+def createAdminStartupPropertiesFile(directoryPath, args):
+  adminserverDir = File(directoryPath)
+  bool = adminserverDir.mkdirs()
+  fileNew=open(directoryPath + '/startup.properties', 'w')
+  args=args.replace(':','\\:')
+  args=args.replace('=','\\=')
+  fileNew.write('Arguments=%s\n' % args)
+  fileNew.flush()
+  fileNew.close()
+
+def changeDatasourceToXA(datasource):
+  cd('/')
+  cd('/JDBCSystemResource/'+datasource+'/JdbcResource/'+datasource+'/JDBCDriverParams/NO_NAME_0')
+  set('DriverName','oracle.jdbc.xa.client.OracleXADataSource')
+  set('UseXADataSourceInterface','True')
+  cd('/JDBCSystemResource/'+datasource+'/JdbcResource/'+datasource+'/JDBCDataSourceParams/NO_NAME_0')
+  set('GlobalTransactionsProtocol','TwoPhaseCommit')
+  cd('/')
+
+
+def changeDomain(apppath,domainmode,javahome,admusrname,admpassword):
+        setOption( "AppDir", apppath )
+        setOption('ServerStartMode', domainmode)
+        setOption('JavaHome', javahome)
+        cd('/')
+        cd('Security/base_domain/User/weblogic')
+        set('Name',admusrname)
+        cmo.setPassword(admpassword)
+
+def changeAdminServer(srvrname,lnaddress,port,ssl,sslport,startargs):
+        cd('/Servers/AdminServer')
+        set('Name', srvrname )
+        cd('/Servers/'+srvrname)
+        if lnaddress:
+           set('ListenAddress', lnaddress)
+        if port:
+           set('ListenPort'   , port)
+        if startargs:
+                  create(srvrname,'ServerStart')
+                  cd('ServerStart/'+srvrname)
+                  set('Arguments',startargs)
+        if ssl == true:
+          cd('/Server/'+srvrname)
+          create(srvrname,'SSL')
+          cd('SSL/'+srvrname)
+          set('Enabled', 'true')
+          set('ListenPort', sslport)
+
+
+
+
+def createManagedServer(srvrname,lnaddress,port,ssl,sslport,startargs,srvrgroup):
+         cd('/')
+         create(srvrname, 'Server')
+         cd('/Servers/'+srvrname)
+         if srvrgroup:
+            setServerGroups(srvrname, srvrgroup)
+         if lnaddress:
+             set('ListenAddress', lnaddress)
+         if port:
+             set('ListenPort'   , port)
+         if startargs:
+                  create(srvrname,'ServerStart')
+                  cd('ServerStart/'+srvrname)
+                  set('Arguments',startargs)
+         if ssl == true:
+                  cd('/Server/'+srvrname)
+                  create(srvrname,'SSL')
+                  cd('SSL/'+srvrname)
+                  set('Enabled', 'true')
+                  set('ListenPort', sslport)
+
+
+def createMachine(mtype, name, address, port):
+  cd('/')
+  create(name,mtype)
+  cd(mtype + '/' + name)
+  create(name, 'NodeManager')
+  cd('NodeManager/' + name)
+  set('NMType','SSL')
+  set('ListenAddress',address)
+  if port:
+    set('ListenPort', port)
+
+
+
+print('Starting Domain creation')
+
+selectTemplate("Basic WebLogic Server Domain")
+if ("osb" in DOMAIN_EXT):
+  selectTemplate("Oracle Service Bus Reference Configuration")
+if ("soa" in DOMAIN_EXT):
+  selectTemplate("Oracle SOA Suite Reference Configuration")
+loadTemplates()
+
+changeDomain(APP_PATH,DOMAIN_MODE,JAVA_HOME,ADMIN_USER_NAME,ADMIN_PASSWORD)
+
+
+changeAdminServer(ADMIN_SERVER_NAME,ADMIN_LISTEN_ADDRESS,ADMIN_PORT,ADMIN_SSL,ADMIN_SSL_PORT,ADMIN_STARTUP_ARGS)
+
+
+
+cd('/')
+setOption( "AppDir", APP_PATH )
+
+
+dumpStack()
+
+
+if ("soa" in DOMAIN_EXT) or ("osb" in DOMAIN_EXT):
+        cd('/JDBCSystemResource/LocalSvcTblDataSource/JdbcResource/LocalSvcTblDataSource/JDBCDriverParams/NO_NAME_0')
+        set('URL',DB_URL)
+        set('PasswordEncrypted',SCHEMA_USER_PASSWORD)
+        cd('Properties/NO_NAME_0/Property/user')
+        set('Value',SCHEMA_USER_PREFIX+'_STB')
+        getDatabaseDefaults()
+
+if ("soa" in DOMAIN_EXT):
+        changeDatasourceToXA('EDNDataSource')
+        changeDatasourceToXA('OraSDPMDataSource')
+        changeDatasourceToXA('SOADataSource')
+if ("osb" in DOMAIN_EXT):
+        changeDatasourceToXA('wlsbjmsrpDataSource')
+
+
+
+if ("osb" in DOMAIN_EXT):
+        delete('osb_server1', 'Server')
+if ("soa" in DOMAIN_EXT):
+        delete('soa_server1', 'Server')
+
+for SERVER in SERVERS:
+  SERVER_GROUPS = globals()[SERVER+'_groups']
+  SERVER_LISTEN_ADDRESS = globals()[SERVER+'_lnaddress']
+  SERVER_LISTEN_PORT = globals()[SERVER+'_port']
+  SERVER_SSL = globals()[SERVER+'_ssl']
+  SERVER_SSL_LISTEN_PORT = globals()[SERVER+'_sslport']
+  SERVER_STARTUP_ARGS = globals()[SERVER+'_startupargs']
+  createManagedServer(SERVER, SERVER_LISTEN_ADDRESS, SERVER_LISTEN_PORT, SERVER_SSL, SERVER_SSL_LISTEN_PORT,SERVER_STARTUP_ARGS,SERVER_GROUPS)
+
+
+if CLUSTERS:
+
+        for CLUSTER in CLUSTERS:
+          CLUSTER_MEMBERS = globals()[CLUSTER+'_members']
+          CLUSTER_ADDR = globals()[CLUSTER+'_address']       
+          cd('/')
+          create(CLUSTER, 'Cluster')
+          cd('Cluster/'+CLUSTER)
+          set('ClusterAddress',CLUSTER_ADDR)
+          for CLUSTER_MEMBER in CLUSTER_MEMBERS:
+              cd('/')
+              assign('Server',CLUSTER_MEMBER,'Cluster',CLUSTER)
+
+
+for MACHINE in MACHINES:
+  MACHINE_MEMBERS = globals()[MACHINE+'_members']
+  NM_LISTEN_ADDRESS = globals()[MACHINE+'_nm_listen_address']
+  NM_LISTEN_PORT = globals()[MACHINE+'_nm_listen_port']
+  createMachine('UnixMachine', MACHINE, NM_LISTEN_ADDRESS, NM_LISTEN_PORT)
+  for MACHINE_MEMBER in MACHINE_MEMBERS:
+    cd('/Servers/'+MACHINE_MEMBER)
+    set('Machine',MACHINE)
+
+
+
+
+
+
+if ADMIN_SERVER_GROUPS:
+   setServerGroups(ADMIN_SERVER_NAME, ADMIN_SERVER_GROUPS)
+
+
+print('Writing Domain')
+writeDomain(DOMAIN_PATH)
+closeTemplate()
+
+
+createAdminStartupPropertiesFile(DOMAIN_PATH+'/servers/'+ADMIN_SERVER_NAME+'/data/nodemanager',ADMIN_STARTUP_ARGS)
+createBootPropertiesFile(DOMAIN_PATH+'/servers/'+ADMIN_SERVER_NAME+'/security','boot.properties',ADMIN_USER_NAME,ADMIN_PASSWORD)
+createBootPropertiesFile(DOMAIN_PATH+'/config/nodemanager','nm_password.properties',ADMIN_USER_NAME,ADMIN_PASSWORD)
+
+readDomain(DOMAIN_PATH)
+
+es = encrypt(ADMIN_PASSWORD,DOMAIN_PATH)
+
+
+cd('/SecurityConfiguration/'+DOMAIN)
+set('CredentialEncrypted',es)
+
+
+set('NodeManagerUsername'         ,ADMIN_USER_NAME )
+set('NodeManagerPasswordEncrypted',es )
+
+
+
+updateDomain()
+closeDomain();
+
+
+
+print('Domain creation completed')
+exit()
+
